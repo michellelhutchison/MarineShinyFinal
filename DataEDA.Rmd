@@ -1,0 +1,105 @@
+---
+title: "EDA Data"
+author: "Michelle Hutchison"
+date: "1/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen=999)
+```
+
+```{r}
+ships<-read.csv('ships_04112020/ships.csv',stringsAsFactors = FALSE)
+```
+
+
+
+
+```{r}
+#MAKE A CHART OF SPEEDS OF EACH BOAT
+
+#CALCULATE TIME IN BETWEEN COLLECTS
+#CALCULATE SPEEd
+
+data_agg_for_speed<-ships%>%
+  select(SHIP_ID, SHIPNAME, ship_type, LAT,LON,DATETIME)%>%
+  group_by(SHIP_ID)%>%
+  arrange(SHIP_ID,DATETIME)%>%
+  mutate(dest_lat=lead(LAT),
+         dest_lon=lead(LON),
+         dest_dtg=lead(DATETIME),
+         total_observations=n())%>%
+  rowwise()%>%
+  mutate(distance_meters = distHaversine(c(LON, LAT),c(dest_lon, dest_lat)))%>%
+  mutate(time_ellapsed=difftime(as.POSIXct(dest_dtg),as.POSIXct(DATETIME),units='hours'))
+
+data_agg_for_speed<-data_agg_for_speed%>%
+  mutate(meters_per_hour=distance_meters/time_ellapsed)
+```
+
+```{r}
+ships_agg<-ships%>%
+  group_by(SHIP_ID,SHIPNAME)%>%
+  mutate(points=n(),
+         first_date=min(DATETIME),
+         last_date=max(DATETIME))%>%
+  select(SHIP_ID, SHIPNAME, ship_type,points,first_date,last_date)%>%
+  unique()
+
+```
+
+
+```{r}
+library(dplyr)
+library(geosphere)
+
+ships_agg<-ships%>%
+  group_by(SHIP_ID,SHIPNAME)%>%
+  mutate(points=n(),
+         first_date=min(DATETIME),
+         last_date=max(DATETIME))%>%
+  select(SHIP_ID, SHIPNAME, ship_type,points,first_date,last_date)%>%
+  unique()
+
+#1226 unique ships_id's and names
+```
+
+
+```{r}
+#DATA AGGREGATED
+#SHIP TYPE, SHIP NAME, TOTAL POINTS, FIRST_SEEN, LAST_LAST, MAX DISTANCE BETWEEN POINTS
+data_agg<-ships%>%
+  group_by(SHIP_ID)%>%
+  select(SHIP_ID, LAT, LON, DATETIME)%>%
+  unique()%>%
+  arrange(SHIP_ID,DATETIME)%>%
+  mutate(dest_lat=lead(LAT),
+         dest_lon=lead(LON),
+         total_points=n())%>%
+  rowwise()%>%
+  mutate(distance_meters = distHaversine(c(LON, LAT),c(dest_lon, dest_lat)))
+
+data_agg_2<-data_agg%>%
+  ungroup()%>%
+  group_by(SHIP_ID)%>%
+  filter(distance_meters==max(distance_meters,na.rm=TRUE))%>%
+  filter(DATETIME==max(DATETIME))
+
+merge_it<-merge(ships_agg, data_agg_2, by='SHIP_ID')
+merge_it<-merge_it%>%
+  select(-same)
+#write.csv(merge_it, 'ships_agg_data.csv')
+```
+
+```{r}
+leafMap<-leaflet()%>%addTiles%>%addCircleMarkers(lng=data_agg_for_speed$LON,lat = data_agg_for_speed$LAT,clusterOptions = markerClusterOptions())
+leafMap
+```
+
+```{r}
+ggplot(ships,
+                   aes(x=ship_type))+geom_bar(stat='count',color='blue')
+```
+
